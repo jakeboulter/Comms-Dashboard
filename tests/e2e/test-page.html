@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Bolero E2E Test Page</title>
+  </head>
+  <body>
+    <h1>Bolero E2E Test</h1>
+    <div id="status">connecting...</div>
+    <div id="bp-count">-</div>
+
+    <script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+    <script>
+      (function(){
+        const params = new URLSearchParams(location.search);
+        const backend = params.get('backend') || 'http://127.0.0.1:3000';
+        const socket = io(backend);
+        document.getElementById('status').textContent = 'connecting to ' + backend;
+
+        socket.on('connect', () => { document.getElementById('status').textContent = 'connected'; });
+
+        socket.on('bolero:update', (data) => {
+          document.getElementById('bp-count').textContent = (Array.isArray(data) ? data.length : '-') + ' belts';
+        });
+
+        // also try initial fetch
+        fetch(backend + '/api/status').then(r => r.json()).then(d => {
+          document.getElementById('bp-count').textContent = (d.belts || []).length + ' belts';
+        }).catch(() => {});
+      })();
+    </script>
+  </body>
+</html>

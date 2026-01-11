@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  bolero:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - BOLERO_HOST=${BOLERO_HOST}
+      - BOLERO_USER=${BOLERO_USER}
+      - BOLERO_PASS=${BOLERO_PASS}

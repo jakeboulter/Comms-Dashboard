@@ -1,0 +1,12 @@
+{
+  "nodeStatus": [
+    {
+      "nodeId": 1959271305,
+      "ip": "10.20.102.210",
+      "bp": [
+        { "id": 13, "battery": { "status": 73 }, "signalLevel": 0 },
+        { "id": 15, "battery": { "status": 75 }, "signalLevel": 0 }
+      ]
+    }
+  ]
+}

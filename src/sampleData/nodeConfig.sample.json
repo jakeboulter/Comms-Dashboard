@@ -1,0 +1,5 @@
+{
+  "nodeConfig": [
+    { "nodeId": 1959271305, "name": "Master", "ip": { "ip": "10.20.102.210" }, "maxBPsOnAntenna": 10 }
+  ]
+}

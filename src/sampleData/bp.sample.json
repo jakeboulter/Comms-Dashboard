@@ -1,0 +1,6 @@
+{
+  "bp": [
+    { "registered": true, "id": 13, "bpType": 3300, "lastConnectTime": 1768120390, "bpConfig": { "bpName": "Wissam", "bpNumber": 14 } },
+    { "registered": true, "id": 15, "bpType": 3300, "lastConnectTime": 1768118695, "bpConfig": { "bpName": "Gabriel", "bpNumber": 16 } }
+  ]
+}
