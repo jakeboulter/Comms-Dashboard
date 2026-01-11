@@ -1,0 +1,4 @@
+/* Show delete button only on hover */
+.pingblock-hover-parent:hover .pingblock-delete-btn {
+  opacity: 1 !important;
+}
