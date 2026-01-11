@@ -90,6 +90,16 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Install Playwright system dependencies (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxss1 libasound2 \
+            libgbm1 libxrandr2 libxcomposite1 libxdamage1 libxkbcommon0 libgtk-3-0
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
