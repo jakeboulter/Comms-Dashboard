@@ -1,3 +1,46 @@
+// ...existing imports...
+// ...existing imports...
+
+// Add a new location
+function handleAddLocation(name: string, panelLocations: any[], setPanelLocations: any, setPanelOrder: any) {
+  const id = `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+  const newLocations = [...panelLocations, { id, name, order: panelLocations.length }];
+  setPanelLocations(newLocations);
+  try { localStorage.setItem('intercomPanelLocations', JSON.stringify(newLocations)); } catch {}
+  // Initialize order for new location
+  setPanelOrder((prev: any) => {
+    const updated = { ...prev, [id]: [] };
+    try { localStorage.setItem('intercomPanelOrder', JSON.stringify(updated)); } catch {}
+    return updated;
+  });
+}
+
+// Rename a location
+function handleRenameLocation(id: string, newName: string, panelLocations: any[], setPanelLocations: any) {
+  const newLocations = panelLocations.map((loc: any) => loc.id === id ? { ...loc, name: newName } : loc);
+  setPanelLocations(newLocations);
+  try { localStorage.setItem('intercomPanelLocations', JSON.stringify(newLocations)); } catch {}
+}
+
+// Delete a location and reassign panels to default
+function handleDeleteLocation(id: string, panelLocations: any[], setPanelLocations: any, setPanelOrder: any, setPanels: any) {
+  const newLocations = panelLocations.filter((loc: any) => loc.id !== id);
+  setPanelLocations(newLocations);
+  try { localStorage.setItem('intercomPanelLocations', JSON.stringify(newLocations)); } catch {}
+  // Remove order for location
+  setPanelOrder((prev: any) => {
+    const updated = { ...prev };
+    delete updated[id];
+    try { localStorage.setItem('intercomPanelOrder', JSON.stringify(updated)); } catch {}
+    return updated;
+  });
+  // Reassign panels to default location
+  setPanels((prev: any) => {
+    const updated = prev.map((p: any) => p.locationId === id ? { ...p, locationId: 'default' } : p);
+    try { localStorage.setItem('intercomPanels', JSON.stringify(updated)); } catch {}
+    return updated;
+  });
+}
 import { fetchSwitchPorts, SwitchPort } from './switchPortUtils';
 import { fetchSwitchGroups, SwitchGroup } from './switchGroupUtils';
 import CollapsibleSection from './CollapsibleSection';
@@ -11,7 +54,7 @@ import TextField from '@mui/material/TextField';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import RadioIcon from './RadioIcon';
-import SaveIcon from '@mui/icons-material/Save';
+import EditIcon from '@mui/icons-material/Edit';
 import IconButton from '@mui/material/IconButton';
 import Snackbar from '@mui/material/Snackbar';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
@@ -44,6 +87,7 @@ import AppBar from '@mui/material/AppBar';
 import Toolbar from '@mui/material/Toolbar';
 import CTLogo from './CTLogo';
 import InternetIcon from './InternetIcon';
+import { PadlockClosedIcon, PadlockOpenIcon } from './PadlockIcon';
 import Typography from '@mui/material/Typography';
 import Container from '@mui/material/Container';
 import Paper from '@mui/material/Paper';
@@ -248,7 +292,18 @@ const columns: GridColDef[] = [
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}>
             {mode === 'bluetooth' && <BluetoothAudioIcon sx={{ color: '#fff' }} titleAccess="Bluetooth" />}
             {mode === 'speaker' && <VolumeUpIcon sx={{ color: '#fff' }} titleAccess="Speaker" />}
-            {(!mode || mode === 'headset') && <HeadsetIcon sx={{ color: '#fff' }} titleAccess="Headset" />}
+            {(!mode || mode === 'headset') && (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ color: '#fff' }}
+                aria-label="Headset"
+              >
+                <path d="M3 11h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5Zm0 0a9 9 0 1 1 18 0m0 0v5a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3Z"/>
+                <path d="M21 16v2a4 4 0 0 1-4 4h-5"/>
+              </svg>
+            )}
           </div>
         </Tooltip>
       );
@@ -269,6 +324,7 @@ const columns: GridColDef[] = [
         if (value >= 50) color = '#e53935';
         else if (value >= 40) color = '#ff9800';
         else if (value <= 10) color = '#90caf9';
+        if (color === '#90caf9') color = '#ccc';
         return <span style={{ color, fontWeight: 600 }}>{Math.round(value)}°C</span>;
       }
       return <span style={{ color: '#888' }}>—</span>;
@@ -288,7 +344,7 @@ const columns: GridColDef[] = [
     cellClassName: 'info-cell',
     renderCell: (params) => (
       <InfoOutlinedIcon
-        sx={{ color: '#90caf9', cursor: 'pointer', fontSize: 24 }}
+        sx={{ color: '#ccc', cursor: 'pointer', fontSize: 24 }}
         onClick={(e) => {
           e.stopPropagation();
           params.row.onInfo();
@@ -335,6 +391,26 @@ function getBeltpackInfo(row: any) {
 }
 
 export default function App() {
+        // Cell titles for Artist Node grid
+        const cellTitles = [
+          'Bay 1:', 'Bay 6:',
+          'Bay 2:', 'Bay 7:',
+          'Bay 3:', 'Bay 8:',
+          'Bay 4:', 'CPU A:',
+          'Bay 5:', 'CPU B:'
+        ];
+      const [showHeaderTitle, setShowHeaderTitle] = useState(false);
+      const dateBlockRef = useRef<HTMLDivElement>(null);
+      useEffect(() => {
+        const observer = new window.IntersectionObserver(
+          ([entry]) => setShowHeaderTitle(!entry.isIntersecting),
+          { threshold: 0.01 }
+        );
+        if (dateBlockRef.current) observer.observe(dateBlockRef.current);
+        return () => observer.disconnect();
+      }, []);
+    const [padlockActive, setPadlockActive] = useState(true); // true = locked
+    const handlePadlockToggle = () => setPadlockActive(a => !a);
   // Store live port info for each switch: { [ip]: SwitchPort[] }
   const [switchPorts, setSwitchPorts] = useState<Record<string, SwitchPort[]>>({});
   // Store group info for each switch: { [ip]: SwitchGroup[] }
@@ -550,22 +626,45 @@ export default function App() {
   const [netName, setNetName] = useState<string>('');
   const [netSettingsRaw, setNetSettingsRaw] = useState<any>(null);
   const [antennas, setAntennas] = useState<any[]>([]);
-  // Intercom panels state, persisted in localStorage
-  const [panels, setPanels] = useState<any[]>(() => {
+  // Intercom panel locations state, persisted in localStorage
+  const [panelLocations, setPanelLocations] = useState<any[]>(() => {
     try {
-      const saved = localStorage.getItem('intercomPanels');
-      return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem('intercomPanelLocations');
+      let locations = saved ? JSON.parse(saved) : [{ id: 'default', name: 'Default', order: 0 }];
+      // Remove any location named 'default'
+      locations = locations.filter((loc: any) => loc.id !== 'default' && loc.name.toLowerCase() !== 'default');
+      return locations;
     } catch {
       return [];
     }
   });
-  // Intercom panel order (array of IPs)
-  const [panelOrder, setPanelOrder] = useState<string[]>(() => {
+  // Intercom panels state, persisted in localStorage
+  const [panels, setPanels] = useState<any[]>(() => {
     try {
-      const saved = localStorage.getItem('intercomPanelOrder');
-      return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem('intercomPanels');
+      const loaded = saved ? JSON.parse(saved) : [];
+      // Ensure every panel has a panelType property
+      return loaded.map((p: any) => ({ ...p, panelType: typeof p.panelType === 'string' ? p.panelType : '' }));
     } catch {
       return [];
+    }
+  });
+
+  // Handler to update panel type
+  const handlePanelTypeChange = (ip: string, newType: string) => {
+    setPanels(prev => {
+      const updated = prev.map(p => p.ip === ip ? { ...p, panelType: newType } : p);
+      try { localStorage.setItem('intercomPanels', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  };
+  // Intercom panel order (object: { [locationId]: string[] })
+  const [panelOrder, setPanelOrder] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem('intercomPanelOrder');
+      return saved ? JSON.parse(saved) : { default: [] };
+    } catch {
+      return { default: [] };
     }
   });
   // Ping history: { [ip]: { timestamps: number[], values: boolean[] } }
@@ -577,29 +676,31 @@ export default function App() {
       return {};
     }
   });
-  const [panelIpInput, setPanelIpInput] = useState('');
-  const [panelNameInput, setPanelNameInput] = useState('');
-  // Add panel by IP
-  const handleAddPanel = async () => {
-    const ip = panelIpInput.trim();
-    const name = panelNameInput.trim();
+  const [panelIpInput, setPanelIpInput] = useState<Record<string, string>>({});
+  const [panelNameInput, setPanelNameInput] = useState<Record<string, string>>({});
+  // Add panel by IP, assign to location
+  const handleAddPanel = async (locationId = 'default') => {
+    const ip = (panelIpInput[locationId] || '').trim();
+    const name = (panelNameInput[locationId] || '').trim();
     if (!ip || !name) return;
     // Remove any previous panel with this IP before adding
     const filteredPanels = panels.filter((p) => p.ip !== ip);
     // Ping immediately
     const online = await pingPanel(ip);
-    const newPanels = [...filteredPanels, { ip, name, online }];
+    const newPanels = [...filteredPanels, { ip, name, online, locationId, panelType: '' }];
     setPanels(newPanels);
-    // Remove from order if present, then add to end
-    const filteredOrder = panelOrder.filter((id) => id !== ip);
-    const newOrder = [...filteredOrder, ip];
-    setPanelOrder(newOrder);
+    // Remove from order if present, then add to end for this location
+    const newPanelOrder = { ...panelOrder };
+    if (!newPanelOrder[locationId]) newPanelOrder[locationId] = [];
+    newPanelOrder[locationId] = newPanelOrder[locationId].filter((id) => id !== ip);
+    newPanelOrder[locationId].push(ip);
+    setPanelOrder(newPanelOrder);
     try {
       localStorage.setItem('intercomPanels', JSON.stringify(newPanels));
-      localStorage.setItem('intercomPanelOrder', JSON.stringify(newOrder));
+      localStorage.setItem('intercomPanelOrder', JSON.stringify(newPanelOrder));
     } catch {}
-    setPanelIpInput('');
-    setPanelNameInput('');
+    setPanelIpInput((prev) => ({ ...prev, [locationId]: '' }));
+    setPanelNameInput((prev) => ({ ...prev, [locationId]: '' }));
   };
 
   // Ping a panel IP and return true if reachable
@@ -624,13 +725,17 @@ export default function App() {
           return { ...panel, online };
         })
       );
-      if (!cancelled) {
-        setPanels(updated);
-        try { localStorage.setItem('intercomPanels', JSON.stringify(updated)); } catch {}
+      // Merge updated online status into the latest panels (to preserve edits like panelType)
+      setPanels(prevPanels => {
+        const merged = prevPanels.map(panel => {
+          const found = updated.find(p => p.ip === panel.ip);
+          return found ? { ...panel, online: found.online } : panel;
+        });
+        try { localStorage.setItem('intercomPanels', JSON.stringify(merged)); } catch {}
         // Update ping history for each panel
         setPingHistory(prev => {
           const newHist = { ...prev };
-          for (const panel of updated) {
+          for (const panel of merged) {
             const ip = panel.ip;
             const prevHist = prev[ip] || { timestamps: [], values: [] };
             // Only keep last 30 minutes (1800 seconds)
@@ -646,7 +751,8 @@ export default function App() {
           try { localStorage.setItem('intercomPanelPingHistory', JSON.stringify(newHist)); } catch {}
           return newHist;
         });
-      }
+        return merged;
+      });
     };
     if (panels.length > 0) {
       updatePanelStatus();
@@ -660,18 +766,24 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(panels.map(p => p.ip))]);
 
-  // Keep panelOrder in sync with panels (add new IPs, remove missing)
+  // Keep panelOrder in sync with panels (add new IPs, remove missing) for each location
   useEffect(() => {
-    const panelIps = panels.map((p: any) => p.ip);
     setPanelOrder((prev) => {
-      let newOrder = prev.filter(ip => panelIps.includes(ip));
-      panelIps.forEach(ip => { if (!newOrder.includes(ip)) newOrder.push(ip); });
-      if (JSON.stringify(newOrder) !== JSON.stringify(prev)) {
-        try { localStorage.setItem('intercomPanelOrder', JSON.stringify(newOrder)); } catch {}
-      }
-      return newOrder;
+      const updatedOrder: Record<string, string[]> = { ...prev };
+      // For each location, sync order with panels assigned to that location
+      panelLocations.forEach(loc => {
+        const locationPanels = panels.filter((p: any) => p.locationId === loc.id).map((p: any) => p.ip);
+        let orderArr = updatedOrder[loc.id] || [];
+        // Remove IPs not present
+        orderArr = orderArr.filter(ip => locationPanels.includes(ip));
+        // Add new IPs
+        locationPanels.forEach(ip => { if (!orderArr.includes(ip)) orderArr.push(ip); });
+        updatedOrder[loc.id] = orderArr;
+      });
+      try { localStorage.setItem('intercomPanelOrder', JSON.stringify(updatedOrder)); } catch {}
+      return updatedOrder;
     });
-  }, [JSON.stringify(panels.map((p: any) => p.ip))]);
+  }, [JSON.stringify(panels), JSON.stringify(panelLocations)]);
 
   useEffect(() => {
     const backend = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:3000';
@@ -811,37 +923,83 @@ export default function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <AppBar position="static" color="primary" elevation={1}>
+      <AppBar position="sticky" color="primary" elevation={1}>
         <Toolbar sx={{ minHeight: 64, display: 'flex', alignItems: 'center', px: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', height: 48, mr: 2 }}>
             <CTLogo style={{ height: 48, width: 'auto', display: 'block' }} />
           </Box>
-          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 600, textAlign: 'center', width: '100%' }}>
-            Network Monitoring Dashboard
-          </Typography>
+          {showHeaderTitle && (
+              <>
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: 22, ml: 2, mr: 4 }}>
+                  Network Monitoring Dashboard{netName ? ` – ${netName}` : ''}
+                </Typography>
+                <Box sx={{ flexGrow: 1 }} />
+                <Typography variant="subtitle1" sx={{ color: '#aaa', fontWeight: 600, fontSize: 18, letterSpacing: 0.5, mr: 3 }}>
+                  {formatDateTime(now)}
+                </Typography>
+              </>
+          )}
           <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
-            <InternetIcon
-              sx={{ color: internetOnline === null ? '#aaa' : internetOnline ? '#4caf50' : '#888', fontSize: 32, ml: 2 }}
-              titleAccess={internetOnline === null ? 'Checking internet...' : internetOnline ? 'Internet reachable' : 'No internet'}
-            />
+              <Tooltip
+                title={padlockActive ? 'Page Locked' : 'Page Unlocked'}
+                slotProps={{ tooltip: { sx: { fontSize: 15, py: 0.5, px: 1.5 } } }}
+              >
+                <span>
+                  <IconButton onClick={handlePadlockToggle} disableRipple sx={{ p: 0, background: 'none', '&:hover': { background: 'none' }, '&:active': { background: 'none' }, '&.Mui-focusVisible': { background: 'none' } }}>
+                    {padlockActive ? (
+                      <PadlockClosedIcon sx={{ color: '#4caf50', fontSize: 32, mr: 0.5 }} />
+                    ) : (
+                      <PadlockOpenIcon sx={{ color: '#f44336', fontSize: 32, mr: 0.5 }} />
+                    )}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            <Tooltip
+              title={
+                internetOnline === null
+                  ? 'Checking internet...'
+                  : internetOnline
+                    ? 'Internet Connected'
+                    : 'No Connection to Internet'
+              }
+              slotProps={{
+                tooltip: {
+                  sx: { fontSize: 15, py: 0.5, px: 1.5 }
+                }
+              }}
+            >
+              <span>
+                <IconButton disableRipple sx={{ p: 0, background: 'none', ml: 2, '&:hover': { background: 'none' }, '&:active': { background: 'none' }, '&.Mui-focusVisible': { background: 'none' } }}>
+                  <InternetIcon
+                    sx={{ color: internetOnline === null ? '#aaa' : internetOnline ? '#4caf50' : '#888', fontSize: 32 }}
+                    titleAccess={internetOnline === null ? 'Checking internet...' : internetOnline ? 'Internet reachable' : 'No internet'}
+                  />
+                </IconButton>
+              </span>
+            </Tooltip>
           </Box>
         </Toolbar>
       </AppBar>
       <Container maxWidth={false} sx={{ mt: 4, px: 0 }}>
         {/* Date/time and overview stats box */}
         <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', mb: 4 }}>
-          <Box sx={{
+          <Box ref={dateBlockRef} sx={{
             background: '#23272B',
             borderRadius: 3,
             px: 3,
             py: 2,
             minWidth: 320,
+            maxWidth: 1200,
+            width: '100%',
             display: 'inline-flex',
             alignItems: 'center',
             boxShadow: '0 2px 8px 0 #0004',
             flexDirection: 'column',
             gap: 1.5,
           }}>
+            <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, fontSize: 22, mb: 2, textAlign: 'center', width: '100%' }}>
+              Network Monitoring Dashboard{netName ? ` – ${netName}` : ''}
+            </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', alignItems: 'center', mb: 1 }}>
               <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, fontSize: 16, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <CircleIcon sx={{
@@ -890,10 +1048,9 @@ export default function App() {
         <Box sx={{ mb: 5 }}>
         <CollapsibleSection
           title={
-            <>
-              <strong style={{ fontWeight: 700 }}>Network Switches</strong>
-              {netName && ` - ${netName}`}
-              <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
+              <>
+                <strong style={{ fontWeight: 700 }}>Network Switches</strong>
+                <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
                 <CircleIcon sx={{
                   color:
                     switches.length === 0 ? '#888'
@@ -909,35 +1066,37 @@ export default function App() {
         >
           <Paper elevation={3} sx={{ p: 2, mb: 3, background: 'rgba(35,39,43,0.98)', borderRadius: 5 }}>
             {/* Switch add form */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, pl: 1 }}>
-              <TextField
-                size="small"
-                label="Switch Name"
-                variant="outlined"
-                value={switchNameInput}
-                onChange={e => setSwitchNameInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddSwitch(); }}
-                sx={{ background: '#23272B', input: { color: '#fff' }, label: { color: '#90caf9' }, minWidth: 140 }}
-                InputProps={{ style: { color: '#fff' } }}
-              />
-              <TextField
-                size="small"
-                label="Switch IP"
-                variant="outlined"
-                value={switchIpInput}
-                onChange={e => setSwitchIpInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddSwitch(); }}
-                sx={{ background: '#23272B', input: { color: '#fff' }, label: { color: '#90caf9' }, minWidth: 140 }}
-                InputProps={{ style: { color: '#fff' } }}
-              />
-              <IconButton color="primary" onClick={handleAddSwitch} sx={{ ml: 1 }}>
-                <AddIcon />
-              </IconButton>
-            </Box>
+            {!padlockActive && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, pl: 1 }}>
+                <TextField
+                  size="small"
+                  label="Switch Name"
+                  variant="outlined"
+                  value={switchNameInput}
+                  onChange={e => setSwitchNameInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddSwitch(); }}
+                  sx={{ background: '#23272B', input: { color: '#b0b0b0' }, label: { color: '#b0b0b0' }, minWidth: 140 }}
+                  InputProps={{ style: { color: '#b0b0b0' } }}
+                />
+                <TextField
+                  size="small"
+                  label="Switch IP"
+                  variant="outlined"
+                  value={switchIpInput}
+                  onChange={e => setSwitchIpInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddSwitch(); }}
+                  sx={{ background: '#23272B', input: { color: '#b0b0b0' }, label: { color: '#b0b0b0' }, minWidth: 140 }}
+                  InputProps={{ style: { color: '#b0b0b0' } }}
+                />
+                <IconButton color="primary" onClick={handleAddSwitch} sx={{ ml: 1 }}>
+                  <AddIcon sx={{ color: '#b0b0b0' }} />
+                </IconButton>
+              </Box>
+            )}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, p: 1 }}>
               {switches.length === 0 && <Typography sx={{ color: '#aaa' }}>No switches configured.</Typography>}
               <DragDropContext
-                onDragEnd={(result: DropResult) => {
+                onDragEnd={padlockActive ? () => {} : (result: DropResult) => {
                   if (!result.destination) return;
                   const from = result.source.index;
                   const to = result.destination.index;
@@ -1019,135 +1178,341 @@ export default function App() {
         </Box>
         {/* Intercom Panels Section */}
         <Box sx={{ mb: 5 }}>
-        <CollapsibleSection
-          title={
-            <>
-              <strong style={{ fontWeight: 700 }}>Intercom Panels</strong>
-              {netName && ` - ${netName}`}
-              <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
-                <CircleIcon sx={{
-                  color:
-                    panels.length === 0 ? '#888'
-                    : panels.every((p: any) => p.online) ? '#4caf50'
-                    : panels.some((p: any) => p.online) ? '#ff9800'
-                    : '#888',
-                  fontSize: 18, mr: 1
-                }} />
-                {panels.filter((p: any) => p.online).length} / {panels.length} online
-              </span>
-            </>
-          }
-        >
-          <Paper elevation={3} sx={{ p: 2, mb: 3, background: 'rgba(35,39,43,0.98)', borderRadius: 5 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, pl: 1 }}>
-              <TextField
-                size="small"
-                label="Panel Name"
-                variant="outlined"
-                value={panelNameInput}
-                onChange={e => setPanelNameInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddPanel(); }}
-                sx={{ background: '#23272B', input: { color: '#fff' }, label: { color: '#90caf9' }, minWidth: 140 }}
-                InputProps={{ style: { color: '#fff' } }}
-              />
-              <TextField
-                size="small"
-                label="Panel IP"
-                variant="outlined"
-                value={panelIpInput}
-                onChange={e => setPanelIpInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddPanel(); }}
-                sx={{ background: '#23272B', input: { color: '#fff' }, label: { color: '#90caf9' }, minWidth: 140 }}
-                InputProps={{ style: { color: '#fff' } }}
-              />
-              <IconButton color="primary" onClick={handleAddPanel} sx={{ ml: 1 }}>
-                <AddIcon />
-              </IconButton>
-            </Box>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, p: 1 }}>
-              {panels.length === 0 && <Typography sx={{ color: '#aaa' }}>No panels found.</Typography>}
-              <DragDropContext
-                onDragEnd={(result: DropResult) => {
-                  if (!result.destination) return;
-                  const from = result.source.index;
-                  const to = result.destination.index;
-                  const newOrder = Array.from(panelOrder);
-                  const [removed] = newOrder.splice(from, 1);
-                  newOrder.splice(to, 0, removed);
-                  setPanelOrder(newOrder);
-                  try { localStorage.setItem('intercomPanelOrder', JSON.stringify(newOrder)); } catch {}
-                }}
-              >
-                <Droppable droppableId="intercom-panels" direction="horizontal">
-                  {(provided: DroppableProvided) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, p: 1 }} ref={provided.innerRef} {...provided.droppableProps}>
-                      {panelOrder
-                        .map(ip => panels.find((p: any) => p.ip === ip))
-                        .filter(Boolean)
-                        .concat(panels.filter((p: any) => !panelOrder.includes(p.ip)))
-                        .map((panel: any, idx: number) => {
-                          const hist = pingHistory[panel.ip] || { timestamps: [], values: [] };
-                          const handleDelete = () => {
-                            const ipToDelete = panel.ip;
-                            const newPanels = panels.filter((p: any) => p.ip !== ipToDelete);
-                            setPanels(newPanels);
-                            const newOrder = panelOrder.filter((id) => id !== ipToDelete);
-                            setPanelOrder(newOrder);
-                            try {
-                              localStorage.setItem('intercomPanels', JSON.stringify(newPanels));
-                              localStorage.setItem('intercomPanelOrder', JSON.stringify(newOrder));
-                            } catch {}
-                            // Remove ping history for this panel
-                            setPingHistory(prev => {
-                              const nh = { ...prev };
-                              delete nh[ipToDelete];
-                              try { localStorage.setItem('intercomPanelPingHistory', JSON.stringify(nh)); } catch {}
-                              return nh;
-                            });
-                          };
-                          return (
-                            <Draggable key={panel.ip} draggableId={panel.ip} index={idx}>
-                              {(dragProvided: DraggableProvided, dragSnapshot: DraggableStateSnapshot) => (
-                                <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps}>
-                                  <PingBlock
-                                    name={panel.name || 'Unknown Panel'}
-                                    ip={panel.ip}
-                                    online={panel.online}
-                                    pingHistory={hist.values}
-                                    onDelete={handleDelete}
-                                    className="panel-block"
-                                    deleteButtonClassName="delete-panel-btn"
-                                    deleteButtonTitle="Delete panel"
-                                    style={{
-                                      boxShadow: dragSnapshot.isDragging ? '0 4px 16px 0 #f44336aa' : '0 2px 8px 0 #0004',
-                                      opacity: dragSnapshot.isDragging ? 0.85 : 1,
-                                    }}
-                                    ipAfterName={false}
-                                    blockType="panel"
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          );
-                        })}
-                      {provided.placeholder}
-                    </Box>
-                  )}
-                </Droppable>
-              </DragDropContext>
-            </Box>
-          </Paper>
-        </CollapsibleSection>
+          <CollapsibleSection
+            title={
+                <>
+                  <strong style={{ fontWeight: 700 }}>Intercom Panels</strong>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
+                  <CircleIcon sx={{
+                    color:
+                      panels.length === 0 ? '#888'
+                      : panels.every((p: any) => p.online) ? '#4caf50'
+                      : panels.some((p: any) => p.online) ? '#ff9800'
+                      : '#888',
+                    fontSize: 18, mr: 1
+                  }} />
+                  {panels.filter((p: any) => p.online).length} / {panels.length} online
+                </span>
+              </>
+            }
+          >
+            <Paper elevation={3} sx={{ p: 2, mb: 3, background: 'rgba(35,39,43,0.98)', borderRadius: 5 }}>
+              {/* Location Headings UI */}
+              <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                {!padlockActive && panelLocations.map(loc => (
+                  <Paper key={loc.id} elevation={2} sx={{ px: 2, py: 1, background: '#23272B', borderRadius: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: 18, mr: 1, color: '#fff' }}>{loc.name}</Typography>
+                    <IconButton size="small" sx={{ color: '#aaa' }} onClick={() => handleRenameLocation(loc.id, prompt('Rename location:', loc.name) || loc.name, panelLocations, setPanelLocations)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    {loc.id !== 'default' && (
+                      <IconButton size="small" sx={{ color: '#aaa' }} onClick={() => handleDeleteLocation(loc.id, panelLocations, setPanelLocations, setPanelOrder, setPanels)}>
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                  </Paper>
+                ))}
+                {!padlockActive && (
+                  <TextField
+                    size="small"
+                    label="Add Location"
+                    variant="outlined"
+                    onKeyDown={e => {
+                      const input = e.target as HTMLInputElement;
+                      if (e.key === 'Enter' && input.value.trim()) {
+                        handleAddLocation(input.value.trim(), panelLocations, setPanelLocations, setPanelOrder);
+                        input.value = '';
+                      }
+                    }}
+                    sx={{ background: '#23272B', label: { color: '#fff' }, minWidth: 140, '& .MuiInputBase-input': { color: '#b0b0b0' } }}
+                  />
+                )}
+              </Box>
+              {/* Panels by Location */}
+              {panelLocations.map(loc => (
+                <Box key={loc.id} sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, fontSize: 20, mb: 1, color: '#fff', pl: 3 }}>{loc.name}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, pl: 1 }}>
+                    {!padlockActive && (
+                      <>
+                        <TextField
+                          size="small"
+                          label="Panel Name"
+                          variant="outlined"
+                          value={panelNameInput[loc.id] || ''}
+                          onChange={e => setPanelNameInput((prev) => ({ ...prev, [loc.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') handleAddPanel(loc.id); }}
+                          sx={{ background: '#23272B', label: { color: '#fff' }, minWidth: 140, '& .MuiInputBase-input': { color: '#b0b0b0' } }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Panel IP"
+                          variant="outlined"
+                          value={panelIpInput[loc.id] || ''}
+                          onChange={e => setPanelIpInput((prev) => ({ ...prev, [loc.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') handleAddPanel(loc.id); }}
+                          sx={{ background: '#23272B', label: { color: '#fff' }, minWidth: 140, '& .MuiInputBase-input': { color: '#b0b0b0' } }}
+                        />
+                        <IconButton color="primary" onClick={() => handleAddPanel(loc.id)} sx={{ ml: 1 }}>
+                          <AddIcon sx={{ color: '#b0b0b0' }} />
+                        </IconButton>
+                      </>
+                    )}
+                  </Box>
+                  <DragDropContext
+                    onDragEnd={padlockActive ? () => {} : (result: DropResult) => {
+                      if (!result.destination) return;
+                      const fromLocation = result.source.droppableId;
+                      const toLocation = result.destination.droppableId;
+                      const fromIdx = result.source.index;
+                      const toIdx = result.destination.index;
+                      const newOrder = { ...panelOrder };
+                      // Remove from source location
+                      const arrFrom = Array.from(newOrder[fromLocation] || []);
+                      const [removed] = arrFrom.splice(fromIdx, 1);
+                      newOrder[fromLocation] = arrFrom;
+                      // Add to destination location
+                      const arrTo = Array.from(newOrder[toLocation] || []);
+                      arrTo.splice(toIdx, 0, removed);
+                      newOrder[toLocation] = arrTo;
+                      setPanelOrder(newOrder);
+                      try { localStorage.setItem('intercomPanelOrder', JSON.stringify(newOrder)); } catch {}
+                      // Update panel's locationId if moved between locations
+                      if (fromLocation !== toLocation) {
+                        setPanels(prev => {
+                          const updated = prev.map(p => p.ip === removed ? { ...p, locationId: toLocation } : p);
+                          try { localStorage.setItem('intercomPanels', JSON.stringify(updated)); } catch {}
+                          return updated;
+                        });
+                      }
+                    }}
+                  >
+                    <Droppable droppableId={loc.id} direction="horizontal">
+                      {(provided: DroppableProvided) => (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, p: 1 }} ref={provided.innerRef} {...provided.droppableProps}>
+                          {((panelOrder[loc.id] || [])
+                            .map(ip => panels.find((p: any) => p.ip === ip && p.locationId === loc.id))
+                            .filter(Boolean)
+                            .concat(panels.filter((p: any) => p.locationId === loc.id && !(panelOrder[loc.id] || []).includes(p.ip))))
+                            .map((panel: any, idx: number) => {
+                              const hist = pingHistory[panel.ip] || { timestamps: [], values: [] };
+                              const handleDelete = () => {
+                                const ipToDelete = panel.ip;
+                                const newPanels = panels.filter((p: any) => p.ip !== ipToDelete);
+                                setPanels(newPanels);
+                                const newOrder = { ...panelOrder };
+                                newOrder[loc.id] = (newOrder[loc.id] || []).filter((id) => id !== ipToDelete);
+                                setPanelOrder(newOrder);
+                                try {
+                                  localStorage.setItem('intercomPanels', JSON.stringify(newPanels));
+                                  localStorage.setItem('intercomPanelOrder', JSON.stringify(newOrder));
+                                } catch {}
+                                // Remove ping history for this panel
+                                setPingHistory(prev => {
+                                  const nh = { ...prev };
+                                  delete nh[ipToDelete];
+                                  try { localStorage.setItem('intercomPanelPingHistory', JSON.stringify(nh)); } catch {}
+                                  return nh;
+                                });
+                              };
+                              return (
+                                <Draggable key={panel.ip} draggableId={panel.ip} index={idx}>
+                                  {(dragProvided: DraggableProvided, dragSnapshot: DraggableStateSnapshot) => (
+                                    <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps}>
+                                      <PingBlock
+                                        name={panel.name || 'Unknown Panel'}
+                                        ip={panel.ip}
+                                        online={panel.online}
+                                        pingHistory={hist.values}
+                                        onDelete={handleDelete}
+                                        className="panel-block"
+                                        deleteButtonClassName="delete-panel-btn"
+                                        deleteButtonTitle="Delete panel"
+                                        style={{
+                                          boxShadow: dragSnapshot.isDragging ? '0 4px 16px 0 #f44336aa' : '0 2px 8px 0 #0004',
+                                          opacity: dragSnapshot.isDragging ? 0.85 : 1,
+                                        }}
+                                        ipAfterName={false}
+                                        blockType="panel"
+                                        panelType={panel.panelType}
+                                        onPanelTypeChange={type => handlePanelTypeChange(panel.ip, type)}
+                                        editablePanelType={!padlockActive}
+                                      />
+                                    </div>
+                                  )}
+                                </Draggable>
+                              );
+                            })}
+                          {provided.placeholder}
+                        </Box>
+                      )}
+                    </Droppable>
+                  </DragDropContext>
+                </Box>
+              ))}
+              </Paper>
+          </CollapsibleSection>
         </Box>
 
+        {/* Artist Nodes Section */}
+        <Box sx={{ mb: 5 }}>
+          <CollapsibleSection
+            title={<>
+              <strong style={{ fontWeight: 700 }}>Artist Nodes</strong>
+              <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
+                <CircleIcon sx={{ color: '#4caf50', fontSize: 18, ml: 1 }} />
+                {/* Online count for Artist Node cards */}
+                {(() => {
+                  // Calculate online count for Artist Node cards: AIO/CPU always online, AES67/DANTE only if pingStatus is online
+                  let onlineCount = 0;
+                  for (let i = 0; i < 10; i++) {
+                    const cellKey = `artist64_cell_${i}`;
+                    let state;
+                    try {
+                      const saved = localStorage.getItem(cellKey);
+                      state = saved ? JSON.parse(saved) : { cardType: 'AES67-108 G2', ip: '' };
+                    } catch {
+                      state = { cardType: 'AES67-108 G2', ip: '' };
+                    }
+                    // Match green dot logic: online if AIO, CPU, or any card with a non-empty IP
+                    if (
+                      state.cardType === 'AIO-108 G2' ||
+                      (typeof state.cardType === 'string' && state.cardType.startsWith('CPU')) ||
+                      (typeof state.ip === 'string' && state.ip.trim())
+                    ) {
+                      onlineCount++;
+                    }
+                  }
+                  return <span style={{ marginLeft: 8, color: '#fff', fontWeight: 600, fontSize: 16 }}>{onlineCount} / 10 online</span>;
+                })()}
+              </span>
+            </>}
+            defaultCollapsed={false}
+          >
+            <Paper elevation={3} sx={{ p: 2, background: 'rgba(35,39,43,0.98)', maxWidth: 'none', overflowX: 'auto', borderRadius: 5 }}>
+              <Paper elevation={2} sx={{ width: 'fit-content', p: 2, background: '#1B1F22', borderRadius: 3, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, fontSize: 18, color: '#fff', mb: 1 }}>
+                  Artist 64 - Comm Control 01
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 2fr)', gridTemplateRows: 'repeat(5, 1fr)', gap: 2 }}>
+                {[...Array(10)].map((_, i) => {
+                    // Second column is i % 2 === 1, bottom two rows are i === 7 or i === 9
+                    const isSecondCol = i % 2 === 1;
+                    const isBottomTwo = isSecondCol && (i === 7 || i === 9);
+                    return (
+                      <Box key={i} sx={{ background: '#23272B', borderRadius: 2, p: 2, minWidth: 340, maxWidth: 520, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', color: '#aaa', fontWeight: 600 }}>
+                        {(() => {
+                          // Style for unified card type text
+                          const cardTypeStyle = { color: '#b0b0b0', fontSize: 16, fontWeight: 500, width: '100%', minHeight: 32, display: 'flex', alignItems: 'center', background: 'none', border: 'none', padding: 0, whiteSpace: 'nowrap' };
+                          // Persistent state for card type and IP per cell
+                          const cellKey = `artist64_cell_${i}`;
+                          const getInitial = () => {
+                            try {
+                              const saved = localStorage.getItem(cellKey);
+                              if (saved) return JSON.parse(saved);
+                            } catch {}
+                            return { cardType: 'AES67-108 G2', ip: '' };
+                          };
+                          const [cellState, setCellState] = React.useState(getInitial);
+                          React.useEffect(() => {
+                            try { localStorage.setItem(cellKey, JSON.stringify(cellState)); } catch {}
+                          }, [cellState]);
+                          const setCardType = (val: string) => setCellState((s: any) => ({ ...s, cardType: val }));
+                          const setIp = (val: string) => setCellState((s: any) => ({ ...s, ip: val }));
+                          const showPingDot = (typeof cellState.ip === 'string' && cellState.ip.trim()) || cellState.cardType === 'AIO-108 G2' || (typeof cellState.cardType === 'string' && cellState.cardType.startsWith('CPU'));
+                          const [pingStatus, setPingStatus] = React.useState<'unknown' | 'online' | 'offline'>('unknown');
+                          React.useEffect(() => {
+                            let cancelled = false;
+                            const checkPing = async () => {
+                              if (!cellState.ip || !cellState.ip.trim()) {
+                                setPingStatus('unknown');
+                                return;
+                              }
+                              try {
+                                const backend = (import.meta as any).env.VITE_BACKEND_URL || 'http://localhost:3000';
+                                const res = await axios.get(`${backend}/api/ping?ip=${encodeURIComponent(cellState.ip)}`);
+                                if (!cancelled) setPingStatus(res.data?.online === true ? 'online' : 'offline');
+                              } catch {
+                                if (!cancelled) setPingStatus('offline');
+                              }
+                            };
+                            checkPing();
+                            const interval = setInterval(checkPing, 10000);
+                            return () => { cancelled = true; clearInterval(interval); };
+                          }, [cellState.ip]);
+                          // Render all cell states on one line, with bay bold
+                          const bayLabel = <span style={{ fontWeight: 700, color: '#fff', fontSize: 15, marginRight: 8 }}>{cellTitles[i]}</span>;
+                          if (isBottomTwo) {
+                            return (
+                              <span style={{ ...cardTypeStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                {bayLabel} Card Type: CPU-128F G2
+                                <CircleIcon sx={{ color: '#4caf50', fontSize: 16, verticalAlign: 'middle' }} />
+                              </span>
+                            );
+                          }
+                          if (padlockActive) {
+                            // Show selected value only
+                            return (
+                              <span style={{ ...cardTypeStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                {bayLabel} Card Type: {cellState.cardType}
+                                {(cellState.cardType === 'AIO-108 G2' || (typeof cellState.cardType === 'string' && cellState.cardType.startsWith('CPU'))) ? (
+                                  <CircleIcon sx={{ color: '#4caf50', fontSize: 16, verticalAlign: 'middle' }} />
+                                ) : showPingDot ? (
+                                  <CircleIcon sx={{ color: pingStatus === 'online' ? '#4caf50' : '#888', fontSize: 16, verticalAlign: 'middle' }} />
+                                ) : null}
+                              </span>
+                            );
+                          }
+                          // Editable UI when padlock is unlocked (default case)
+                          return (
+                            <span style={{ ...cardTypeStyle, flexDirection: 'column', alignItems: 'flex-start', minHeight: 56, width: '100%' }}>
+                              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                <span style={{ display: 'flex', alignItems: 'center' }}>
+                                  {bayLabel} Card Type:
+                                  <select
+                                    style={{ marginLeft: 6, background: 'none', color: '#b0b0b0', fontSize: 16, fontWeight: 500, border: 'none', outline: 'none', padding: 0, appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none' }}
+                                    value={cellState.cardType}
+                                    onChange={e => setCardType(e.target.value)}
+                                  >
+                                    <option value="AES67-108 G2">AES67-108 G2</option>
+                                    <option value="AIO-108 G2">AIO-108 G2</option>
+                                    <option value="DANTE-108 G2">DANTE-108 G2</option>
+                                    <option value="MADI-108 G2">MADI-108 G2</option>
+                                  </select>
+                                </span>
+                                {(cellState.cardType === 'AIO-108 G2' || (typeof cellState.cardType === 'string' && cellState.cardType.startsWith('CPU'))) ? (
+                                  <CircleIcon sx={{ color: '#4caf50', fontSize: 16, verticalAlign: 'middle' }} />
+                                ) : showPingDot ? (
+                                  <CircleIcon sx={{ color: pingStatus === 'online' ? '#4caf50' : '#888', fontSize: 16, verticalAlign: 'middle' }} />
+                                ) : null}
+                              </span>
+                              {(typeof cellState.cardType === 'string' && (cellState.cardType.startsWith('AES67') || cellState.cardType.startsWith('DANTE'))) && (
+                                <input
+                                  type="text"
+                                  placeholder="IP Address"
+                                  value={cellState.ip}
+                                  onChange={e => setIp(e.target.value)}
+                                  style={{ marginTop: 6, background: 'none', color: '#b0b0b0', fontSize: 15, border: '1px solid #444', borderRadius: 3, padding: '4px 8px', width: '100%' }}
+                                />
+                              )}
+                            </span>
+                          );
+                        })()}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Paper>
+            </Paper>
+          </CollapsibleSection>
+        </Box>
         {/* Antennas Section */}
         <Box sx={{ mb: 5 }}>
         <CollapsibleSection
           title={
-            <>
-              <strong style={{ fontWeight: 700 }}>Antennas</strong>
-              {netName && ` - ${netName}`}
-              <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
+              <>
+                <strong style={{ fontWeight: 700 }}>Antennas</strong>
+                <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
                 <CircleIcon sx={{
                   color:
                     antennas.length === 0 ? '#888'
@@ -1245,10 +1610,9 @@ export default function App() {
         {/* Beltpacks Section */}
         <CollapsibleSection
           title={
-            <>
-              <strong style={{ fontWeight: 700 }}>Beltpacks</strong>
-              {netName && ` - ${netName}`}
-              <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
+              <>
+                <strong style={{ fontWeight: 700 }}>Beltpacks</strong>
+                <span style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 12, fontWeight: 600, fontSize: 17 }}>
                 <CircleIcon sx={{ color: (belts.length > 0 && belts.some((b: any) => b.config?.registered && b.runtime)) ? '#4caf50' : '#888', fontSize: 18, mr: 1 }} />
                 {belts.filter((b: any) => b.config?.registered && b.runtime).length} / {belts.length} online
               </span>
@@ -1260,9 +1624,18 @@ export default function App() {
             <Tabs
               value={tab}
               onChange={(_, v) => setTab(v)}
-              textColor="primary"
-              indicatorColor="primary"
-              sx={{ mb: 2 }}
+              textColor="inherit"
+              indicatorColor="secondary"
+              sx={{
+                mb: 2,
+                '& .MuiTabs-indicator': {
+                  backgroundColor:
+                    tab === 'all' ? '#fff' :
+                    tab === 'online' ? '#4caf50' :
+                    tab === 'offline' ? '#e53935' : '#fff',
+                  height: 3,
+                },
+              }}
             >
               <Tab value="all" label={`All (${belts.length})`} />
               <Tab value="online" label={`Online (${belts.filter((b: any) => b.config?.registered && b.runtime).length})`} />
@@ -1285,7 +1658,7 @@ export default function App() {
                   borderRadius: 5,
                   overflow: 'auto',
                   '& .MuiDataGrid-cell': { borderBottom: '1px solid #333' },
-                  '& .MuiDataGrid-columnHeaders': { background: '#23272B', color: '#90caf9', fontWeight: 700, fontSize: 17 },
+                  '& .MuiDataGrid-columnHeaders': { background: '#23272B', color: '#ccc', fontWeight: 700, fontSize: 17 },
                   '& .info-cell': {
                     display: 'flex',
                     alignItems: 'center',
@@ -1328,7 +1701,7 @@ export default function App() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInfoRow(null)} color="primary">Close</Button>
+          <Button onClick={() => setInfoRow(null)} color="inherit">Close</Button>
         </DialogActions>
       </Dialog>
       <Box component="footer" sx={{
